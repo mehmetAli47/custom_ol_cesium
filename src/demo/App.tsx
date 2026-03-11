@@ -23,12 +23,11 @@ import TileWMS from "ol/source/TileWMS.js";
 import GeoJSON from "ol/format/GeoJSON.js";
 import Feature from "ol/Feature.js";
 import { Fill, Stroke, Style, Circle as CircleStyle } from "ol/style.js";
-import Draw from "ol/interaction/Draw.js";
 import type { Geometry } from "ol/geom.js";
-import type { Type as GeometryType } from "ol/geom/Geometry.js";
 
 import OlMap, { type OlMapRef } from "../lib/components/OlMap";
 import OLCesium from "../lib";
+import { useDrawing } from "./useDrawing";
 
 const mapModeEnum = {
   Map2d: 0,
@@ -73,10 +72,8 @@ export default function App() {
   const olMapRef = useRef<OlMapRef>(null);
   const [mapObject, setMapObject] = useState<OlMapWithOl3d | null>(null);
   const [mapMode, setMapMode] = useState<MapMode>(mapModeEnum.Map2d);
-  const [isDrawing, setIsDrawing] = useState<GeometryType | null>(null);
 
-  const drawSourceRef = useRef<VectorSource<Feature<Geometry>> | null>(null);
-  const drawInteractionRef = useRef<Draw | null>(null);
+  const { activeType, drawLayer, toggle, clear } = useDrawing(mapObject);
 
   const layerDefs = useMemo(() => {
     // Kalici default base layer — her zaman gorunur, katman listesinde YOK.
@@ -133,24 +130,16 @@ export default function App() {
       },
     });
 
-    // Drawing layer
-    const drawSource = new VectorSource<Feature<Geometry>>();
-    drawSourceRef.current = drawSource;
-    const drawings = new VectorLayer({
-      source: drawSource,
-      properties: { title: "External Drawings" },
-    });
-
     return {
       defaultBase,
       defs: [
         { id: "osm", title: "OSM", layer: osm },
         { id: "wms_states", title: "WMS (topp:states)", layer: wms },
         { id: "sample", title: "Sample Data", layer: vector },
-        { id: "drawings", title: "External Drawings", layer: drawings },
+        { id: "drawings", title: "External Drawings", layer: drawLayer },
       ] as const,
     };
-  }, []);
+  }, [drawLayer]);
 
   const [layerVisibility, setLayerVisibility] = useState<
     Record<string, boolean>
@@ -214,16 +203,15 @@ export default function App() {
         }
 
         mapObject.updateSize();
+
+        // Önce çizimleri senkronize et (3D gösterilmeden önce)
+        // Böylece 3D'ye geçişte çizimler hazır olur
+        if (mapObject.ol3d.core) {
+          mapObject.ol3d.core.layerSync.syncOnce();
+        }
+
         mapObject.ol3d.setEnabled(true);
         mapObject.ol3d.getCesiumScene().globe.show = true;
-
-        // 3D moduna geçildiğinde çizimleri senkronize et
-        setTimeout(() => {
-          if (mapObject.ol3d && mapObject.ol3d.core) {
-            mapObject.ol3d.core.layerSync.syncOnce();
-          }
-        }, 100);
-
         mapObject.ol3d.getCesiumScene().requestRender();
       } else {
         if (mapObject.ol3d) {
@@ -234,31 +222,6 @@ export default function App() {
     },
     [mapObject],
   );
-
-  // Basic drawing on the OL map (2D), independent of Cesium overlay.
-  useEffect(() => {
-    if (!mapObject) return;
-    const source = drawSourceRef.current;
-    if (!source) return;
-
-    // Remove previous draw interaction
-    if (drawInteractionRef.current) {
-      mapObject.removeInteraction(drawInteractionRef.current);
-      drawInteractionRef.current = null;
-    }
-
-    if (!isDrawing) return;
-    const draw = new Draw({ source, type: isDrawing });
-    mapObject.addInteraction(draw);
-    drawInteractionRef.current = draw;
-
-    return () => {
-      if (drawInteractionRef.current) {
-        mapObject.removeInteraction(drawInteractionRef.current);
-        drawInteractionRef.current = null;
-      }
-    };
-  }, [mapObject, isDrawing]);
 
   return (
     <div
@@ -322,13 +285,13 @@ export default function App() {
         />
 
         <button
-          onClick={() => setIsDrawing((p) => (p === "Point" ? null : "Point"))}
+          onClick={() => toggle("Point")}
           style={{
             padding: "8px 10px",
             borderRadius: 10,
             border: "1px solid rgba(255,255,255,0.12)",
             background:
-              isDrawing === "Point"
+              activeType === "Point"
                 ? "rgba(245,158,11,0.18)"
                 : "rgba(255,255,255,0.06)",
             color: "#e5e7eb",
@@ -338,15 +301,13 @@ export default function App() {
           Point
         </button>
         <button
-          onClick={() =>
-            setIsDrawing((p) => (p === "LineString" ? null : "LineString"))
-          }
+          onClick={() => toggle("LineString")}
           style={{
             padding: "8px 10px",
             borderRadius: 10,
             border: "1px solid rgba(255,255,255,0.12)",
             background:
-              isDrawing === "LineString"
+              activeType === "LineString"
                 ? "rgba(245,158,11,0.18)"
                 : "rgba(255,255,255,0.06)",
             color: "#e5e7eb",
@@ -356,15 +317,13 @@ export default function App() {
           Line
         </button>
         <button
-          onClick={() =>
-            setIsDrawing((p) => (p === "Polygon" ? null : "Polygon"))
-          }
+          onClick={() => toggle("Polygon")}
           style={{
             padding: "8px 10px",
             borderRadius: 10,
             border: "1px solid rgba(255,255,255,0.12)",
             background:
-              isDrawing === "Polygon"
+              activeType === "Polygon"
                 ? "rgba(245,158,11,0.18)"
                 : "rgba(255,255,255,0.06)",
             color: "#e5e7eb",
@@ -374,7 +333,7 @@ export default function App() {
           Polygon
         </button>
         <button
-          onClick={() => drawSourceRef.current?.clear()}
+          onClick={clear}
           style={{
             padding: "8px 10px",
             borderRadius: 10,

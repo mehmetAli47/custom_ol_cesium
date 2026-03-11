@@ -20,6 +20,7 @@ import {
   convertLayerToCesium,
   syncVisibility,
 } from "../../utils/layerConverters";
+import { syncFeaturesToDataSource } from "../../utils/vectorConverters";
 import type { LayerMapping, VectorOptions } from "../../types/adapter";
 import { withPausedRender } from "../render/withPausedRender";
 
@@ -142,30 +143,50 @@ export class LayerSync {
       if (mapping.type === "vector" && mapping.visible) {
         const source = (mapping.olLayer as any)?.getSource?.();
         if (source && typeof source.getFeatures === "function") {
-          // Mevcut dataSource'yı kaldır ve yeniden oluştur
-          if (mapping.cesiumLayer) {
-            try {
-              this.viewer.dataSources.remove(mapping.cesiumLayer as any, true);
-            } catch {
-              // ignore
-            }
+          const features = source.getFeatures() as any[];
+
+          // Eğer dataSource zaten varsa ve destroy edilmemişse incremental sync yap
+          const dataSource = mapping.cesiumLayer as any;
+          const isDataSourceValid = dataSource && !dataSource.isDestroyed?.();
+
+          if (!isDataSourceValid) {
+            // Destroy edilmiş, referansı temizle
+            mapping.cesiumLayer = null;
           }
 
-          const view = this.map.getView();
-          const resolvedVectorOpts: VectorOptions = {
-            ...this.vectorOptions,
-            resolution:
-              view.getResolution() ?? this.vectorOptions.resolution ?? 1,
-            extent: this.vectorOptions.extent ?? view.calculateExtent(),
-          };
+          if (isDataSourceValid) {
+            const view = this.map.getView();
+            const resolvedVectorOpts: VectorOptions = {
+              ...this.vectorOptions,
+              resolution:
+                view.getResolution() ?? this.vectorOptions.resolution ?? 1,
+              extent: this.vectorOptions.extent ?? view.calculateExtent(),
+            };
 
-          const result = convertLayerToCesium(
-            mapping.olLayer as any,
-            resolvedVectorOpts,
-          );
-          if (result && result.dataSource) {
-            this.viewer.dataSources.add(result.dataSource);
-            mapping.cesiumLayer = result.dataSource;
+            syncFeaturesToDataSource(
+              dataSource,
+              features,
+              resolvedVectorOpts,
+              (mapping.olLayer as any).getStyle?.(),
+            );
+          } else {
+            // İlk kez oluşturuluyor - full conversion
+            const view = this.map.getView();
+            const resolvedVectorOpts: VectorOptions = {
+              ...this.vectorOptions,
+              resolution:
+                view.getResolution() ?? this.vectorOptions.resolution ?? 1,
+              extent: this.vectorOptions.extent ?? view.calculateExtent(),
+            };
+
+            const result = convertLayerToCesium(
+              mapping.olLayer as any,
+              resolvedVectorOpts,
+            );
+            if (result && result.dataSource) {
+              this.viewer.dataSources.add(result.dataSource);
+              mapping.cesiumLayer = result.dataSource;
+            }
           }
         }
       }
@@ -421,14 +442,10 @@ export class LayerSync {
         if (!mapping || mapping.type !== "vector") return;
         if (!mapping.visible) return;
 
-        try {
-          if (mapping.cesiumLayer) {
-            this.viewer.dataSources.remove(mapping.cesiumLayer as any, true);
-          }
-        } catch {
-          // ignore
-        }
+        const source = layer?.getSource?.();
+        if (!source) return;
 
+        const features = source.getFeatures() as any[];
         const view = this.map.getView();
         const resolvedVectorOpts: VectorOptions = {
           ...this.vectorOptions,
@@ -436,12 +453,32 @@ export class LayerSync {
             view.getResolution() ?? this.vectorOptions.resolution ?? 1,
           extent: this.vectorOptions.extent ?? view.calculateExtent(),
         };
-        const result = convertLayerToCesium(layer, resolvedVectorOpts);
-        if (result && result.dataSource) {
-          this.viewer.dataSources.add(result.dataSource);
-          mapping.cesiumLayer = result.dataSource;
-          this.updateCesiumZOrder();
+
+        // Eğer dataSource zaten varsa ve destroy edilmemişse incremental sync yap
+        const dataSource = mapping.cesiumLayer as any;
+        const isDataSourceValid = dataSource && !dataSource.isDestroyed?.();
+
+        if (!isDataSourceValid) {
+          mapping.cesiumLayer = null;
+        }
+
+        if (isDataSourceValid) {
+          syncFeaturesToDataSource(
+            dataSource,
+            features,
+            resolvedVectorOpts,
+            layer.getStyle?.(),
+          );
           this.viewer.scene.requestRender();
+        } else {
+          // İlk kez oluşturuluyor
+          const result = convertLayerToCesium(layer, resolvedVectorOpts);
+          if (result && result.dataSource) {
+            this.viewer.dataSources.add(result.dataSource);
+            mapping.cesiumLayer = result.dataSource;
+            this.updateCesiumZOrder();
+            this.viewer.scene.requestRender();
+          }
         }
       }, 50); // 100 yerine 50ms ile daha hızlı güncelleme
 
