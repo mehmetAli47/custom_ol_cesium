@@ -1,0 +1,45 @@
+{
+  "name": "custom-ol-cesium",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "main": "./dist-lib/index.js",
+  "types": "./dist-lib/types/index.d.ts",
+  "files": [
+    "dist-lib/**",
+    "README.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist-lib/types/index.d.ts",
+      "import": "./dist-lib/index.js"
+    }
+  },
+  "scripts": {
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "tsc --noEmit && vite build",
+    "build:lib": "tsc -p tsconfig.lib.json && vite build --config vite.config.lib.ts && node scripts/write-dist-lib-package.mjs",
+    "build:all": "yarn build && yarn build:lib",
+    "preview": "vite preview"
+  },
+  "peerDependencies": {
+    "cesium": ">=1.115.0 <2",
+    "ol": ">=10.2.0 <11",
+    "react": ">=17.0.0 <19",
+    "react-dom": ">=17.0.0 <19"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@types/react": "^18.3.12",
+    "@types/react-dom": "^18.3.1",
+    "@vitejs/plugin-react": "^4.3.4",
+    "cesium": "^1.124.0",
+    "ol": "^10.3.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "typescript": "~5.6.2",
+    "vite": "^6.0.0",
+    "vite-plugin-cesium": "^1.2.23"
+  }
+}

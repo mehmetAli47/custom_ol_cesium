@@ -1,0 +1,154 @@
+# OpenLayers ↔ CesiumJS Adapter Library
+
+React + Vite + TypeScript ile 2D OpenLayers haritalarını 3D CesiumJS sahnesine senkronize eden adapter kütüphanesi.
+
+## Proposed Changes
+
+### 1. Project Setup
+
+#### [NEW] Vite + React + TypeScript Scaffold
+
+- `npx -y create-vite@latest ./ --template react-ts` ile proje oluşturulacak
+- Bağımlılıklar:
+  - `ol` (OpenLayers)
+  - `cesium` (CesiumJS)
+  - `resium` (React-Cesium bindings)
+  - `vite-plugin-cesium` (Vite Cesium static asset/worker config)
+
+#### [NEW] [vite.config.ts](file:///e:/Codes/denemeler/custom_ol_cesium/vite.config.ts)
+
+- `vite-plugin-cesium` entegrasyonu
+- Cesium static asset ve worker konfigürasyonu
+
+---
+
+### 2. TypeScript Types
+
+#### [NEW] [adapter.d.ts](file:///e:/Codes/denemeler/custom_ol_cesium/src/types/adapter.d.ts)
+
+- `OlCesiumAdapterProps` — Ana adapter component prop tipi
+- `ViewState` — center, zoom, rotation, tilt, extent
+- `VectorOptions` — extrude, label, billboard
+- `StyleOptions` — circleToBillboard, fillToPolygon, strokeToPolyline
+- `LayerMapping` — OL Layer ↔ Cesium layer eşlemesi
+- Generic tipler: `ConvertedLayer<T>`, `ConvertedFeature<T>`
+
+---
+
+### 3. Utility Converters
+
+#### [NEW] [layerConverters.ts](file:///e:/Codes/denemeler/custom_ol_cesium/src/utils/layerConverters.ts)
+
+| OL Layer | → Cesium |
+|---|---|
+| `TileLayer (XYZ)` | `UrlTemplateImageryProvider` |
+| `TileLayer (WMS)` | `WebMapServiceImageryProvider` |
+| `TileLayer (WMTS)` | `WebMapTileServiceImageryProvider` |
+| `ImageLayer` | `SingleTileImageryProvider` |
+| `VectorLayer` | `CustomDataSource` (entities) |
+
+- Visibility, opacity, z-index sync
+- Lazy conversion: sadece görünür katmanlar dönüştürülür
+
+#### [NEW] [vectorConverters.ts](file:///e:/Codes/denemeler/custom_ol_cesium/src/utils/vectorConverters.ts)
+
+| OL Geometry | → Cesium Entity |
+|---|---|
+| `Point` | `Billboard` / `Point` |
+| `LineString` | `Polyline` |
+| `Polygon` | `Polygon` (+ extrude height) |
+| `MultiPoint/MultiLine/MultiPolygon` | Multiple entities |
+| `Circle` | `EllipseGraphics` |
+
+- GeoJSON feature → Entity dönüşümü
+- Label / Billboard mapping
+- Batch conversion for large datasets
+
+#### [NEW] [styleConverters.ts](file:///e:/Codes/denemeler/custom_ol_cesium/src/utils/styleConverters.ts)
+
+| OL Style | → Cesium |
+|---|---|
+| `Fill` | `ColorMaterialProperty` |
+| `Stroke` | `PolylineMaterial` + width |
+| `Circle` | `Billboard` (icon) |
+| `Text` | `LabelGraphics` |
+| `Icon` | `BillboardGraphics` |
+
+- Color/opacity mapping (OL rgba → Cesium Color)
+
+---
+
+### 4. Hooks
+
+#### [NEW] [useOlCesium.ts](file:///e:/Codes/denemeler/custom_ol_cesium/src/hooks/useOlCesium.ts)
+
+- `useCameraSync(olMap, cesiumViewer)` — İki yönlü kamera senkronizasyonu
+  - OL View change → Cesium Camera update
+  - Cesium Camera move → OL View update
+  - Debounce ile infinite loop önleme
+- `useLayerSync(olMap, cesiumViewer)` — Katman ekleme/silme/visibility sync
+- `useInteractionSync(olMap, cesiumViewer)` — Click, hover, select eşlemesi
+
+---
+
+### 5. React Components
+
+#### [NEW] [OlMap.tsx](file:///e:/Codes/denemeler/custom_ol_cesium/src/components/OlMap.tsx)
+
+- OpenLayers Map wrapper
+- `ref` ile Map instance dışarıya expose edilir
+- Varsayılan OSM tile layer
+- View state props: center, zoom
+
+#### [NEW] [CesiumScene.tsx](file:///e:/Codes/denemeler/custom_ol_cesium/src/components/CesiumScene.tsx)
+
+- Cesium Viewer wrapper
+- Dynamic import (`React.lazy`) — sadece 3D aktifken yüklenir
+- Terrain provider desteği
+- `ref` ile Viewer instance dışarıya expose edilir
+
+#### [NEW] [OlCesiumAdapter.tsx](file:///e:/Codes/denemeler/custom_ol_cesium/src/components/OlCesiumAdapter.tsx)
+
+- Ana adapter component
+- `enable3D` prop ile 2D ↔ 3D toggle
+- Hook'ları (camera, layer, interaction sync) birleştirir
+- Overlay/popup senkronizasyonu
+- `onCameraChange` callback
+
+---
+
+### 6. Demo App
+
+#### [MODIFY] [App.tsx](file:///e:/Codes/denemeler/custom_ol_cesium/src/App.tsx)
+
+- Modern, karanlık tema UI
+- 2D/3D toggle butonu (animasyonlu)
+- Örnek katmanlar: OSM base + bir WMS layer + GeoJSON vektör layer
+- Layer panel (visibility toggle)
+- Kamera bilgisi göstergesi
+
+#### [MODIFY] [index.css](file:///e:/Codes/denemeler/custom_ol_cesium/src/index.css)
+
+- Dark theme design system
+- Glassmorphism panel styling
+- Smooth transition/animation tokens
+
+---
+
+### 7. Entry Point
+
+#### [NEW] [index.ts](file:///e:/Codes/denemeler/custom_ol_cesium/src/index.ts)
+
+- Tüm public API export: components, hooks, utils, types
+
+---
+
+## Verification Plan
+
+### Browser Tests
+1. `npm run dev` ile dev server başlatılır
+2. 2D harita doğru render ediliyor mu → OSM tiles görünür
+3. "3D" butonuna tıklanır → Cesium globe render olur
+4. Katman visibility toggle → her iki modda da çalışır
+5. Haritayı pan/zoom → 3D tarafı da senkronize olur
+6. 3D'den 2D'ye dönüş → kamera pozisyonu korunur

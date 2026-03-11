@@ -1,0 +1,11 @@
+node_modules
+dist
+src/demo
+src/**/*
+!src/lib/**/*
+Implementation Plan
+vite.config.ts
+vite.config.lib.ts
+tsconfig*.json
+vitest.config.ts
+yarn.lock
